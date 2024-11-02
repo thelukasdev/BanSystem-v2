@@ -9,7 +9,8 @@ import net.coalcube.bansystem.core.listener.Event;
 import net.coalcube.bansystem.core.listener.LoginListener;
 import net.coalcube.bansystem.core.sql.Database;
 import net.coalcube.bansystem.core.textcomponent.TextComponentmd5;
-import net.coalcube.bansystem.core.util.*;
+import net.coalcube.bansystem.core.util.ConfigurationUtil;
+import net.coalcube.bansystem.core.util.URLUtil;
 import net.coalcube.bansystem.spigot.BanSystemSpigot;
 import net.coalcube.bansystem.spigot.util.SpigotUser;
 import org.bukkit.entity.Player;
@@ -24,7 +25,9 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import java.net.InetAddress;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 public class SpigotPlayerConnectionListener implements Listener {
@@ -36,10 +39,13 @@ public class SpigotPlayerConnectionListener implements Listener {
     private final Plugin instance;
     private final URLUtil urlUtil;
     private final ConfigurationUtil configurationUtil;
-    private static Map<String, Boolean> vpnIpCache;
+    private static final Map<String, Boolean> vpnIpCache = new HashMap<>();
     private final LoginListener loginListener;
 
-    public SpigotPlayerConnectionListener(BanSystem banSystem, BanManager banManager, YamlDocument config, String banScreen, Plugin instance, URLUtil urlUtil, ConfigurationUtil configurationUtil, Database sql, IDManager idManager) {
+    public SpigotPlayerConnectionListener(
+            BanSystem banSystem, BanManager banManager, YamlDocument config, String banScreen, 
+            Plugin instance, URLUtil urlUtil, ConfigurationUtil configurationUtil, Database sql, IDManager idManager) {
+
         this.banSystem = banSystem;
         this.banManager = banManager;
         this.config = config;
@@ -48,58 +54,59 @@ public class SpigotPlayerConnectionListener implements Listener {
         this.urlUtil = urlUtil;
         this.configurationUtil = configurationUtil;
 
-        net.coalcube.bansystem.core.textcomponent.TextComponent textComponent = new TextComponentmd5(configurationUtil);
+        var textComponent = new TextComponentmd5(configurationUtil);
         this.loginListener = new LoginListener(banSystem, banManager, configurationUtil, sql, idManager, urlUtil, textComponent);
-        vpnIpCache = new HashMap<>();
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onPreLogin(AsyncPlayerPreLoginEvent e) {
-        UUID uuid = e.getUniqueId();
-        InetAddress ip = e.getAddress();
-        Database sql = BanSystem.getInstance().getSQL();
-        if(!sql.isConnected()) return;
+    public void onPreLogin(AsyncPlayerPreLoginEvent event) {
+        UUID uuid = event.getUniqueId();
+        InetAddress ip = event.getAddress();
+        Database sql = banSystem.getSQL();
 
-        Event event = loginListener.onJoin(uuid, e.getName(), ip);
-
-        if(event.isCancelled()) {
-            e.disallow(AsyncPlayerPreLoginEvent.Result.KICK_BANNED, event.getCancelReason());
+        if (!sql.isConnected()) {
+            return;
         }
 
+        Event joinEvent = loginListener.onJoin(uuid, event.getName(), ip);
+        if (joinEvent.isCancelled()) {
+            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_BANNED, joinEvent.getCancelReason());
+        }
     }
 
     @EventHandler
-    public void onDisconnect(PlayerQuitEvent e) {
-        Player p = e.getPlayer();
+    public void onDisconnect(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
         try {
-            Ban ban = banManager.getBan(p.getUniqueId(), Type.NETWORK);
+            Ban ban = banManager.getBan(player.getUniqueId(), Type.NETWORK);
             if (ban != null) {
-                e.setQuitMessage(null);
+                event.setQuitMessage(null);
             }
-        } catch (SQLException | ExecutionException | InterruptedException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException | ExecutionException | InterruptedException e) {
+            e.printStackTrace();
         }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onJoin(PlayerJoinEvent e) {
-        Player p = e.getPlayer();
-        User user = new SpigotUser(p);
-        InetAddress ip = p.getAddress().getAddress();
+    public void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        var user = new SpigotUser(player);
+        InetAddress ip = player.getAddress().getAddress();
 
         try {
-            Event event = loginListener.onPostJoin(user, ip);
-            e.setJoinMessage("");
-            if(event.isCancelled()) {
+            Event postJoinEvent = loginListener.onPostJoin(user, ip);
+            event.setJoinMessage("");
+
+            if (postJoinEvent.isCancelled()) {
                 new BukkitRunnable() {
                     @Override
                     public void run() {
-                        p.kickPlayer(event.getCancelReason());
+                        player.kickPlayer(postJoinEvent.getCancelReason());
                     }
                 }.runTaskLater(BanSystemSpigot.getPlugin(), 40L);
             }
-        } catch (SQLException | ExecutionException | InterruptedException ex) {
-            throw new RuntimeException(ex);
+        } catch (SQLException | ExecutionException | InterruptedException e) {
+            e.printStackTrace();
         }
     }
 }
