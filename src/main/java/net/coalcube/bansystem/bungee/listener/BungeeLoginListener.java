@@ -58,33 +58,36 @@ public class BungeeLoginListener implements Listener {
         vpnIpCache = new HashMap<>();
     }
 
-    @SuppressWarnings("deprecation")
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onLogin(LoginEvent e) {
-        PendingConnection con = e.getConnection();
-        UUID uuid = con.getUniqueId();
-        String username = con.getName();
-        InetAddress ip = e.getConnection().getAddress().getAddress();
+    public void onLogin(LoginEvent event) {
+        PendingConnection connection = event.getConnection();
+        UUID uuid = connection.getUniqueId();
+        String username = connection.getName();
+        InetAddress ip = connection.getAddress().getAddress();
 
-        e.registerIntent(BanSystemBungee.getInstance());
+        event.registerIntent(BanSystemBungee.getInstance());
+
         new Thread(() -> {
-            Event event = loginListener.onJoin(uuid, username, ip);
-            e.setCancelled(event.isCancelled());
-            e.setReason(new TextComponent(event.getCancelReason()));
+            try {
+                Event preLoginEvent = loginListener.onJoin(uuid, username, ip);
+                event.setCancelled(preLoginEvent.isCancelled());
+                event.setReason(new TextComponent(preLoginEvent.getCancelReason()));
 
-            if (!e.isCancelled()) {
-                ProxyServer.getInstance().getScheduler().schedule(BanSystemBungee.getInstance(), () -> {
-                    User user = banSystem.getUser(uuid);
-                    try {
-                        Event postEvent = loginListener.onPostJoin(user, ip);
-                        e.setCancelled(postEvent.isCancelled());
-                        e.setReason(new TextComponent(postEvent.getCancelReason()));
-                    } catch (SQLException | ExecutionException | InterruptedException ex) {
-                        throw new RuntimeException(ex);
-                    }
-                }, 1, TimeUnit.SECONDS);
+                if (!event.isCancelled()) {
+                    ProxyServer.getInstance().getScheduler().schedule(BanSystemBungee.getInstance(), () -> {
+                        try {
+                            User user = banSystem.getUser(uuid);
+                            Event postLoginEvent = loginListener.onPostJoin(user, ip);
+                            event.setCancelled(postLoginEvent.isCancelled());
+                            event.setReason(new TextComponent(postLoginEvent.getCancelReason()));
+                        } catch (SQLException | ExecutionException | InterruptedException ex) {
+                            ex.printStackTrace();
+                        }
+                    }, 1, TimeUnit.SECONDS);
+                }
+            } finally {
+                event.completeIntent(BanSystemBungee.getInstance());
             }
-            e.completeIntent(BanSystemBungee.getInstance());
         }).start();
     }
 }
