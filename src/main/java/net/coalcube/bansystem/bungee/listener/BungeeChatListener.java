@@ -28,7 +28,7 @@ public class BungeeChatListener implements Listener {
     private final Database sql;
     private final ConfigurationUtil configurationUtil;
     private final ChatListener chatListener;
-    private final boolean signdChatBypass;
+    private final boolean signedChatBypass;
 
     public BungeeChatListener(BanSystem banSystem, BanManager banManager, YamlDocument config, Database sql, BlacklistUtil blacklistUtil, ConfigurationUtil configurationUtil, IDManager idManager) {
         this.banSystem = banSystem;
@@ -38,34 +38,32 @@ public class BungeeChatListener implements Listener {
         this.blacklistUtil = blacklistUtil;
         this.configurationUtil = configurationUtil;
         this.chatListener = new ChatListener(banSystem, banManager, configurationUtil, sql, blacklistUtil, idManager);
-
-        signdChatBypass = config.getBoolean("signdChatBypass.enable");
+        this.signedChatBypass = config.getBoolean("signedChatBypass.enable");
     }
 
-    @SuppressWarnings("deprecation")
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onChat(ChatEvent e) throws SQLException, IOException, ExecutionException, InterruptedException {
-        ProxiedPlayer p = (ProxiedPlayer) e.getSender();
-        User user = banSystem.getUser(p.getUniqueId());
-        String msg = e.getMessage();
+        ProxiedPlayer player = (ProxiedPlayer) e.getSender();
+        User user = banSystem.getUser(player.getUniqueId());
+        String message = e.getMessage();
 
-        Event event = chatListener.onChat(user, msg);
-
+        Event event = chatListener.onChat(user, message);
         e.setCancelled(event.isCancelled());
 
-        // send message to Spigot server.
-
-        if(!signdChatBypass) return;
-        if(e.isCommand() || e.isCancelled() || e.isProxyCommand()) return;
-
-        if(p.getPendingConnection().getVersion() < 767)
+        if (!signedChatBypass || e.isCommand() || e.isCancelled() || e.isProxyCommand()) {
             return;
+        }
+
+        if (player.getPendingConnection().getVersion() < 767) {
+            return;
+        }
 
         e.setCancelled(true);
-        ByteArrayOutputStream b = new ByteArrayOutputStream();
-        try (DataOutputStream out = new DataOutputStream(b)) {
-            out.writeUTF(e.getMessage());
-            p.getServer().sendData("bansys:chatsign", b.toByteArray());
+
+        try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+             DataOutputStream dataOutputStream = new DataOutputStream(byteArrayOutputStream)) {
+            dataOutputStream.writeUTF(message);
+            player.getServer().sendData("bansys:chatsign", byteArrayOutputStream.toByteArray());
         } catch (Exception exception) {
             exception.printStackTrace();
         }
