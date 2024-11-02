@@ -5,6 +5,8 @@ import java.util.UUID;
 
 public class Ban {
 
+    private static final long PERMANENT_BAN = -1L;  // Define constant for permanent ban
+
     private Type type;
     private String reason, creator, ip;
     private UUID player;
@@ -24,14 +26,7 @@ public class Ban {
     }
 
     public Ban(String id, UUID player, Type type, String reason, UUID creator, String ip, Date creationdate, long duration) {
-        this.id = id;
-        this.player = player;
-        this.reason = reason;
-        this.creationdate = creationdate;
-        this.creator = creator.toString();
-        this.ip = ip;
-        this.type = type;
-        this.duration = duration;
+        this(id, player, type, reason, creator.toString(), ip, creationdate, duration);
     }
 
     public Type getType() {
@@ -90,15 +85,35 @@ public class Ban {
         this.duration = duration;
     }
 
-    public long getEnd() {
-        return (duration == -1) ? duration : creationdate.getTime() + duration;
-    }
-
-    public long getRemainingTime() {
-        return (getEnd() == -1) ? -1 : getEnd() - System.currentTimeMillis();
-    }
-
     public String getId() {
         return id;
+    }
+
+    /**
+     * Gets the end time of the ban in milliseconds, or PERMANENT_BAN if it is a permanent ban.
+     */
+    public long getEnd() {
+        return isPermanent() ? PERMANENT_BAN : creationdate.getTime() + duration;
+    }
+
+    /**
+     * Gets the remaining time of the ban in milliseconds, or PERMANENT_BAN if it is a permanent ban.
+     */
+    public long getRemainingTime() {
+        return isPermanent() ? PERMANENT_BAN : getEnd() - System.currentTimeMillis();
+    }
+
+    /**
+     * Checks if the ban is permanent.
+     */
+    public boolean isPermanent() {
+        return duration == PERMANENT_BAN;
+    }
+
+    /**
+     * Checks if the ban is currently active based on the remaining time.
+     */
+    public boolean isActive() {
+        return isPermanent() || getRemainingTime() > 0;
     }
 }
